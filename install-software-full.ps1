@@ -11,7 +11,7 @@ $scriptStartTime = Get-Date
 
 try {
     "================================================================================" | Out-File $logFile -Append
-    "INICIO DEL SCRIPT COMPLETO DE INSTALACIÓN" | Out-File $logFile -Append
+    "INICIO DEL SCRIPT COMPLETO DE INSTALACION" | Out-File $logFile -Append
     "Fecha/Hora: $(Get-Date)" | Out-File $logFile -Append
     "Usuario: $env:USERNAME" | Out-File $logFile -Append
     "Ruta del script: $PSCommandPath" | Out-File $logFile -Append
@@ -147,14 +147,14 @@ try {
         "Esto puede ser normal si ya está instalado o si no se necesitan los extras." | Out-File $logFile -Append
     }
     
-    # Paso 8: Verificar instalación
+    # Paso 8: Verificar instalacion
     $owocrCheck = & $pythonPath -m pip show owocr 2>&1
     if ($LASTEXITCODE -eq 0) {
-        "Verificación de instalación:" | Out-File $logFile -Append
+        "Verificacion de instalacion:" | Out-File $logFile -Append
         $owocrCheck | Out-File $logFile -Append
-        "Instalación de owocr completada con éxito." | Out-File $logFile -Append
+        "Instalacion de owocr completada con exito." | Out-File $logFile -Append
     } else {
-        throw "No se pudo verificar la instalación de owocr"
+        throw "No se pudo verificar la instalacion de owocr"
     }
 }
 catch {
@@ -214,7 +214,7 @@ try {
     while (-not (Test-Path $tempExtractPath) -and $waited -lt $maxWait) {
         Start-Sleep -Seconds 5
         $waited += 5
-        "Esperando que los archivos estén extraídos... ($waited/$maxWait segundos)" | Out-File $logFile -Append
+        "Esperando que los archivos esten extraidos... ($waited/$maxWait segundos)" | Out-File $logFile -Append
     }
     
     # Verificar que la extracción fue exitosa
@@ -351,8 +351,8 @@ try {
             if (-not $installSuccess) {
                 "ADVERTENCIA: No se pudo instalar el addin con ningún método de instalación silenciosa." | Out-File $logFile -Append
                 "El addin puede requerir instalación manual ejecutando: $setupExe" | Out-File $logFile -Append
-                "NOTA: Los archivos extraídos están en: $tempExtractPath" | Out-File $logFile -Append
-                "NOTA: Los archivos NO se limpiarán para permitir instalación manual." | Out-File $logFile -Append
+                "NOTA: Los archivos extraidos estan en: $tempExtractPath" | Out-File $logFile -Append
+                "NOTA: Los archivos NO se limpiaran para permitir instalacion manual." | Out-File $logFile -Append
                 $script:skipCleanup = $true
             }
         } else {
@@ -375,8 +375,8 @@ try {
         }
         "Instalación de plantillas y addin de Word completada." | Out-File $logFile -Append
     } else {
-        "ERROR: Los archivos extraídos no se encontraron en $tempExtractPath" | Out-File $logFile -Append
-        "Es posible que la extracción aún esté en progreso o haya fallado." | Out-File $logFile -Append
+        "ERROR: Los archivos extraidos no se encontraron en $tempExtractPath" | Out-File $logFile -Append
+        "Es posible que la extraccion aun este en progreso o haya fallado." | Out-File $logFile -Append
     }
 }
 catch {
@@ -415,12 +415,12 @@ catch {
     "ERROR: No se pudo restaurar la configuración de XMBC." | Out-File $logFile -Append
 }
 
-    "--- PROCESO DE CONFIGURACIÓN FINALIZADO ---" | Out-File $logFile -Append
+    "--- PROCESO DE CONFIGURACION FINALIZADO ---" | Out-File $logFile -Append
     "Finalizado a las $(Get-Date)" | Out-File $logFile -Append
 }
 catch {
     "================================================================================" | Out-File $logFile -Append
-    "ERROR CRÍTICO EN EL SCRIPT DE INSTALACIÓN" | Out-File $logFile -Append
+    "ERROR CRITICO EN EL SCRIPT DE INSTALACION" | Out-File $logFile -Append
     "================================================================================" | Out-File $logFile -Append
     "Error: $_" | Out-File $logFile -Append
     "Detalles: $($_.Exception.Message)" | Out-File $logFile -Append

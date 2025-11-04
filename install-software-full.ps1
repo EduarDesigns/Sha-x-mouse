@@ -159,61 +159,37 @@ try {
         "ADVERTENCIA: pip upgrade fallo con codigo $LASTEXITCODE" | Out-File $logFile -Append
     }
     
-    # Paso 7: Clonar e instalar owocr desde el repositorio personalizado
-    "Instalando owocr desde el repositorio personalizado..." | Out-File $logFile -Append
-    $owocrRepoUrl = "https://github.com/EduarDesigns/my-owocr.git"
-    $owocrCloneDir = "$env:TEMP\my-owocr"
+    # Paso 7: Instalar owocr directamente desde GitHub sin clonar localmente
+    "Instalando owocr desde el repositorio personalizado en GitHub..." | Out-File $logFile -Append
+    $owocrRepoUrl = "git+https://github.com/EduarDesigns/my-owocr.git"
     
-    # Eliminar directorio si existe (por si acaso)
-    if (Test-Path $owocrCloneDir) {
-        "Eliminando directorio existente..." | Out-File $logFile -Append
-        Remove-Item -Path $owocrCloneDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    
-    # Clonar el repositorio
-    "Clonando repositorio desde $owocrRepoUrl..." | Out-File $logFile -Append
-    $gitCloneOutput = & git.exe clone $owocrRepoUrl $owocrCloneDir 2>&1
-    $gitCloneOutput | Out-File $logFile -Append
-    if ($LASTEXITCODE -ne 0) {
-        throw "La clonacion del repositorio fallo con codigo $LASTEXITCODE"
-    }
-    
-    # Instalar owocr desde el repositorio clonado con extras [lens]
-    "Instalando owocr con extras [lens] desde el repositorio clonado..." | Out-File $logFile -Append
-    
-    # Primero instalar en modo editable (recomendado para desarrollo)
-    $owocrInstallOutput = & $pythonPath -m pip install -e "$owocrCloneDir[lens]" 2>&1
+    # Instalar directamente desde GitHub con extras [lens]
+    # Pip clonará temporalmente, instalará y limpiará automáticamente
+    "Instalando owocr con extras [lens] directamente desde GitHub..." | Out-File $logFile -Append
+    $owocrInstallOutput = & $pythonPath -m pip install "$owocrRepoUrl[lens]" 2>&1
     $owocrInstallOutput | Out-File $logFile -Append
     
     if ($LASTEXITCODE -ne 0) {
-        "ADVERTENCIA: Instalacion en modo editable (-e) fallo. Intentando instalacion normal..." | Out-File $logFile -Append
-        # Intentar instalación normal desde el directorio
-        $owocrInstallOutput2 = & $pythonPath -m pip install "$owocrCloneDir[lens]" 2>&1
+        "ADVERTENCIA: Instalacion con extras fallo. Intentando sin extras primero..." | Out-File $logFile -Append
+        # Intentar sin extras primero
+        $owocrInstallOutput2 = & $pythonPath -m pip install $owocrRepoUrl 2>&1
         $owocrInstallOutput2 | Out-File $logFile -Append
-        if ($LASTEXITCODE -ne 0) {
-            "ADVERTENCIA: Instalacion normal tambien fallo. Intentando sin extras primero..." | Out-File $logFile -Append
-            # Intentar sin extras primero
-            $owocrInstallOutput3 = & $pythonPath -m pip install -e $owocrCloneDir 2>&1
-            $owocrInstallOutput3 | Out-File $logFile -Append
-            if ($LASTEXITCODE -eq 0) {
-                "Instalacion base exitosa. Instalando extras [lens]..." | Out-File $logFile -Append
-                # Instalar los extras desde el mismo directorio
-                $owocrLensOutput = & $pythonPath -m pip install "$owocrCloneDir[lens]" 2>&1
-                $owocrLensOutput | Out-File $logFile -Append
-                if ($LASTEXITCODE -ne 0) {
-                    "ADVERTENCIA: No se pudieron instalar los extras [lens]. Instalando manualmente..." | Out-File $logFile -Append
-                    # Intentar instalar los extras manualmente
-                    & $pythonPath -m pip install owocr[lens] 2>&1 | Out-File $logFile -Append
-                }
-            } else {
-                throw "La instalacion de owocr desde el repositorio fallo con codigo $LASTEXITCODE"
+        if ($LASTEXITCODE -eq 0) {
+            "Instalacion base exitosa. Instalando extras [lens]..." | Out-File $logFile -Append
+            # Instalar los extras después
+            $owocrLensOutput = & $pythonPath -m pip install "$owocrRepoUrl[lens]" 2>&1
+            $owocrLensOutput | Out-File $logFile -Append
+            if ($LASTEXITCODE -ne 0) {
+                "ADVERTENCIA: No se pudieron instalar los extras [lens]. Intentando desde PyPI..." | Out-File $logFile -Append
+                # Intentar instalar solo los extras desde PyPI (asumiendo que owocr ya está instalado)
+                & $pythonPath -m pip install "google-generativeai" 2>&1 | Out-File $logFile -Append
             }
+        } else {
+            throw "La instalacion de owocr desde el repositorio fallo con codigo $LASTEXITCODE"
         }
+    } else {
+        "Instalacion exitosa desde GitHub." | Out-File $logFile -Append
     }
-    
-    # Limpiar el directorio clonado después de instalar
-    "Limpiando directorio temporal del repositorio..." | Out-File $logFile -Append
-    Remove-Item -Path $owocrCloneDir -Recurse -Force -ErrorAction SilentlyContinue
     
     # Paso 8: Verificar instalacion
     $owocrCheck = & $pythonPath -m pip show owocr 2>&1

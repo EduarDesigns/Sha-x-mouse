@@ -34,6 +34,7 @@ try {
 # 2. Usar Chocolatey para instalar el software base.
 "Instalando software base..." | Out-File $logFile -Append
 choco install python -y
+choco install git -y
 choco install googlechrome -y
 choco install sharex -y
 choco install onedrive -y
@@ -62,8 +63,8 @@ catch {
 # 4. Instalar las utilidades de Python (owocr) - MÉTODO ULTRA-ROBUSTO
 "Iniciando la instalación de owocr (método a prueba de fallos)..." | Out-File $logFile -Append
 try {
-    # Paso 1: Esperar un poco para que Python se instale completamente
-    Start-Sleep -Seconds 10
+    # Paso 1: Esperar un poco para que Python y Git se instalen completamente
+    Start-Sleep -Seconds 15
     
     # Paso 2: Intentar recargar variables de entorno (puede fallar, no es crítico)
     try {
@@ -122,30 +123,97 @@ try {
     $pythonVersion = & $pythonPath --version 2>&1
     "Versión de Python: $pythonVersion" | Out-File $logFile -Append
     
-    # Paso 5: Actualizar pip
+    # Paso 5: Verificar que git está instalado
+    "Verificando instalacion de git..." | Out-File $logFile -Append
+    try {
+        refreshenv
+        $gitPath = (Get-Command git.exe -ErrorAction Stop).Source
+        "Git encontrado: $gitPath" | Out-File $logFile -Append
+    }
+    catch {
+        "ADVERTENCIA: Git no encontrado en PATH. Intentando buscar..." | Out-File $logFile -Append
+        $gitPossiblePaths = @(
+            "C:\Program Files\Git\bin\git.exe",
+            "C:\Program Files (x86)\Git\bin\git.exe"
+        )
+        $gitPath = $null
+        foreach ($path in $gitPossiblePaths) {
+            if (Test-Path $path) {
+                $gitPath = $path
+                $gitDir = Split-Path -Parent (Split-Path -Parent $path)
+                $env:Path = "$gitDir\bin;$($env:Path)"
+                "Git encontrado en: $gitPath" | Out-File $logFile -Append
+                break
+            }
+        }
+        if (-not $gitPath) {
+            throw "Git no se pudo encontrar. Asegurate de que se instalo correctamente."
+        }
+    }
+    
+    # Paso 6: Actualizar pip
     "Actualizando pip..." | Out-File $logFile -Append
     $pipUpgradeOutput = & $pythonPath -m pip install --upgrade pip 2>&1
     $pipUpgradeOutput | Out-File $logFile -Append
     if ($LASTEXITCODE -ne 0) {
-        "ADVERTENCIA: pip upgrade falló con código $LASTEXITCODE" | Out-File $logFile -Append
+        "ADVERTENCIA: pip upgrade fallo con codigo $LASTEXITCODE" | Out-File $logFile -Append
     }
     
-    # Paso 6: Instalar owocr
-    "Instalando owocr..." | Out-File $logFile -Append
-    $owocrOutput = & $pythonPath -m pip install owocr 2>&1
-    $owocrOutput | Out-File $logFile -Append
-    if ($LASTEXITCODE -ne 0) {
-        throw "La instalación de owocr falló con código $LASTEXITCODE"
+    # Paso 7: Clonar e instalar owocr desde el repositorio personalizado
+    "Instalando owocr desde el repositorio personalizado..." | Out-File $logFile -Append
+    $owocrRepoUrl = "https://github.com/EduarDesigns/my-owocr.git"
+    $owocrCloneDir = "$env:TEMP\my-owocr"
+    
+    # Eliminar directorio si existe (por si acaso)
+    if (Test-Path $owocrCloneDir) {
+        "Eliminando directorio existente..." | Out-File $logFile -Append
+        Remove-Item -Path $owocrCloneDir -Recurse -Force -ErrorAction SilentlyContinue
     }
     
-    # Paso 7: Instalar owocr con extras [lens]
-    "Instalando owocr[lens]..." | Out-File $logFile -Append
-    $owocrLensOutput = & $pythonPath -m pip install 'owocr[lens]' 2>&1
-    $owocrLensOutput | Out-File $logFile -Append
+    # Clonar el repositorio
+    "Clonando repositorio desde $owocrRepoUrl..." | Out-File $logFile -Append
+    $gitCloneOutput = & git.exe clone $owocrRepoUrl $owocrCloneDir 2>&1
+    $gitCloneOutput | Out-File $logFile -Append
     if ($LASTEXITCODE -ne 0) {
-        "ADVERTENCIA: La instalación de owocr[lens] falló con código $LASTEXITCODE" | Out-File $logFile -Append
-        "Esto puede ser normal si ya está instalado o si no se necesitan los extras." | Out-File $logFile -Append
+        throw "La clonacion del repositorio fallo con codigo $LASTEXITCODE"
     }
+    
+    # Instalar owocr desde el repositorio clonado con extras [lens]
+    "Instalando owocr con extras [lens] desde el repositorio clonado..." | Out-File $logFile -Append
+    
+    # Primero instalar en modo editable (recomendado para desarrollo)
+    $owocrInstallOutput = & $pythonPath -m pip install -e "$owocrCloneDir[lens]" 2>&1
+    $owocrInstallOutput | Out-File $logFile -Append
+    
+    if ($LASTEXITCODE -ne 0) {
+        "ADVERTENCIA: Instalacion en modo editable (-e) fallo. Intentando instalacion normal..." | Out-File $logFile -Append
+        # Intentar instalación normal desde el directorio
+        $owocrInstallOutput2 = & $pythonPath -m pip install "$owocrCloneDir[lens]" 2>&1
+        $owocrInstallOutput2 | Out-File $logFile -Append
+        if ($LASTEXITCODE -ne 0) {
+            "ADVERTENCIA: Instalacion normal tambien fallo. Intentando sin extras primero..." | Out-File $logFile -Append
+            # Intentar sin extras primero
+            $owocrInstallOutput3 = & $pythonPath -m pip install -e $owocrCloneDir 2>&1
+            $owocrInstallOutput3 | Out-File $logFile -Append
+            if ($LASTEXITCODE -eq 0) {
+                "Instalacion base exitosa. Instalando extras [lens]..." | Out-File $logFile -Append
+                # Instalar los extras desde el mismo directorio
+                $owocrLensOutput = & $pythonPath -m pip install "$owocrCloneDir[lens]" 2>&1
+                $owocrLensOutput | Out-File $logFile -Append
+                if ($LASTEXITCODE -ne 0) {
+                    "ADVERTENCIA: No se pudieron instalar los extras [lens]. Instalando manualmente..." | Out-File $logFile -Append
+                    # Intentar instalar los extras manualmente
+                    & $pythonPath -m pip install owocr[lens] 2>&1 | Out-File $logFile -Append
+                }
+            } else {
+                throw "La instalacion de owocr desde el repositorio fallo con codigo $LASTEXITCODE"
+            }
+        }
+    }
+    
+    # Limpiar el directorio clonado después de instalar
+    "Limpiando directorio temporal del repositorio..." | Out-File $logFile -Append
+    Remove-Item -Path $owocrCloneDir -Recurse -Force -ErrorAction SilentlyContinue
     
     # Paso 8: Verificar instalacion
     $owocrCheck = & $pythonPath -m pip show owocr 2>&1
@@ -201,9 +269,6 @@ catch {
 # 5.5. Instalar plantillas y addin de Word desde archivos extraídos
 "Iniciando la instalación de plantillas y addin de Word..." | Out-File $logFile -Append
 try {
-    # Variable para controlar la limpieza de archivos temporales
-    $script:skipCleanup = $false
-    
     # Los archivos ya fueron descargados y descomprimidos por el user-data
     # Solo necesitamos procesar los archivos extraídos
     $tempExtractPath = "$env:TEMP\att_extracted"
@@ -232,14 +297,22 @@ try {
             "ADVERTENCIA: No se encontró Normal.dotm en el archivo extraído." | Out-File $logFile -Append
         }
         
-        # 2. Copiar ATTESTATION 127.dotm a Templates (será registrado como nueva plantilla)
+        # 2. Copiar ATTESTATION 127.dotm a Documents\Custom Office Templates\ y al escritorio
         $attestationDotm = Join-Path -Path $tempExtractPath -ChildPath "ATTESTATION 127.dotm"
         if (Test-Path $attestationDotm) {
-            Copy-Item -Path $attestationDotm -Destination $templatesDir -Force
-            "ATTESTATION 127.dotm copiado a $templatesDir" | Out-File $logFile -Append
-            "NOTA: ATTESTATION 127.dotm estará disponible como plantilla personalizada en Word." | Out-File $logFile -Append
+            # Copiar a Documents\Custom Office Templates\ (crear carpeta si no existe)
+            $customTemplatesDir = "$env:USERPROFILE\Documents\Custom Office Templates"
+            New-Item -ItemType Directory -Force -Path $customTemplatesDir | Out-Null
+            Copy-Item -Path $attestationDotm -Destination $customTemplatesDir -Force
+            "ATTESTATION 127.dotm copiado a $customTemplatesDir" | Out-File $logFile -Append
+            
+            # Copiar también al escritorio
+            $desktopPath = [Environment]::GetFolderPath("Desktop")
+            Copy-Item -Path $attestationDotm -Destination $desktopPath -Force
+            "ATTESTATION 127.dotm copiado al escritorio: $desktopPath" | Out-File $logFile -Append
+            "NOTA: ATTESTATION 127.dotm estara disponible como plantilla personalizada en Word." | Out-File $logFile -Append
         } else {
-            "ADVERTENCIA: No se encontró ATTESTATION 127.dotm en el archivo extraído." | Out-File $logFile -Append
+            "ADVERTENCIA: No se encontro ATTESTATION 127.dotm en el archivo extraido." | Out-File $logFile -Append
         }
         
         # 3. Copiar carpeta Document Building Blocks a %appdata%\Microsoft\
@@ -256,123 +329,30 @@ try {
             "ADVERTENCIA: No se encontró la carpeta Document Building Blocks en el archivo extraído." | Out-File $logFile -Append
         }
         
-        # 4. Instalar el addin de Word desde la carpeta wordin
+        # 4. Copiar carpeta wordin al escritorio para instalacion manual
         $wordinDir = Join-Path -Path $tempExtractPath -ChildPath "wordin"
-        $setupExe = Join-Path -Path $wordinDir -ChildPath "setup.exe"
-        if (Test-Path $setupExe) {
-            "Instalando addin de Word desde wordin..." | Out-File $logFile -Append
-            "Ruta del instalador: $setupExe" | Out-File $logFile -Append
+        if (Test-Path $wordinDir) {
+            "Copiando carpeta wordin al escritorio..." | Out-File $logFile -Append
+            $desktopPath = [Environment]::GetFolderPath("Desktop")
+            $wordinDest = Join-Path -Path $desktopPath -ChildPath "wordin"
             
-            # Asegurar que Word no esté ejecutándose
-            Stop-Process -Name WINWORD -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-            
-            # Función para ejecutar con timeout
-            function Start-ProcessWithTimeout {
-                param(
-                    [string]$FilePath,
-                    [string]$Arguments,
-                    [int]$TimeoutSeconds = 300
-                )
-                
-                $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -PassThru -NoNewWindow
-                $processId = $process.Id
-                "Proceso iniciado con PID: $processId" | Out-File $logFile -Append
-                
-                $completed = $false
-                $elapsed = 0
-                $checkInterval = 5
-                
-                while ($elapsed -lt $TimeoutSeconds -and -not $completed) {
-                    Start-Sleep -Seconds $checkInterval
-                    $elapsed += $checkInterval
-                    
-                    try {
-                        $runningProcess = Get-Process -Id $processId -ErrorAction Stop
-                        if ($runningProcess.HasExited) {
-                            $completed = $true
-                            $exitCode = $runningProcess.ExitCode
-                            "Proceso terminó con código de salida: $exitCode" | Out-File $logFile -Append
-                            return $exitCode
-                        }
-                    }
-                    catch {
-                        $completed = $true
-                        "Proceso ya no existe (puede haber terminado o haber sido terminado)." | Out-File $logFile -Append
-                        return $null
-                    }
-                }
-                
-                if (-not $completed) {
-                    "TIMEOUT: El proceso no terminó en $TimeoutSeconds segundos. Terminando proceso..." | Out-File $logFile -Append
-                    try {
-                        Stop-Process -Id $processId -Force -ErrorAction Stop
-                        "Proceso terminado forzadamente." | Out-File $logFile -Append
-                    }
-                    catch {
-                        "No se pudo terminar el proceso (puede que ya haya terminado)." | Out-File $logFile -Append
-                    }
-                    return $null
-                }
+            # Si ya existe, eliminar la anterior
+            if (Test-Path $wordinDest) {
+                "La carpeta wordin ya existe en el escritorio. Reemplazando..." | Out-File $logFile -Append
+                Remove-Item -Path $wordinDest -Recurse -Force
             }
             
-            # Intentar instalación silenciosa con diferentes parámetros comunes
-            $installSuccess = $false
-            $installMethods = @(
-                @{Args = "/S"; Name = "/S (silent)"},
-                @{Args = "/quiet"; Name = "/quiet"},
-                @{Args = "/SILENT"; Name = "/SILENT"},
-                @{Args = "/VERYSILENT"; Name = "/VERYSILENT"},
-                @{Args = "/qn"; Name = "/qn (MSI)"}
-            )
-            
-            foreach ($method in $installMethods) {
-                if ($installSuccess) { break }
-                
-                "Intentando instalación con parámetros: $($method.Name)..." | Out-File $logFile -Append
-                try {
-                    $exitCode = Start-ProcessWithTimeout -FilePath $setupExe -Arguments $method.Args -TimeoutSeconds 300
-                    
-                    if ($exitCode -eq 0 -or $null -eq $exitCode) {
-                        "Instalación completada con método $($method.Name)." | Out-File $logFile -Append
-                        $installSuccess = $true
-                    }
-                    else {
-                        "El proceso terminó con código de error: $exitCode (método $($method.Name))" | Out-File $logFile -Append
-                        "Intentando siguiente método..." | Out-File $logFile -Append
-                    }
-                }
-                catch {
-                    "ERROR con método $($method.Name): $_" | Out-File $logFile -Append
-                    "Intentando siguiente método..." | Out-File $logFile -Append
-                }
-            }
-            
-            if (-not $installSuccess) {
-                "ADVERTENCIA: No se pudo instalar el addin con ningún método de instalación silenciosa." | Out-File $logFile -Append
-                "El addin puede requerir instalación manual ejecutando: $setupExe" | Out-File $logFile -Append
-                "NOTA: Los archivos extraidos estan en: $tempExtractPath" | Out-File $logFile -Append
-                "NOTA: Los archivos NO se limpiaran para permitir instalacion manual." | Out-File $logFile -Append
-                $script:skipCleanup = $true
-            }
+            Copy-Item -Path $wordinDir -Destination $wordinDest -Recurse -Force
+            "Carpeta wordin copiada al escritorio: $wordinDest" | Out-File $logFile -Append
+            "NOTA: Puedes instalar el addin manualmente ejecutando setup.exe desde la carpeta wordin en el escritorio." | Out-File $logFile -Append
         } else {
-            "ADVERTENCIA: No se encontró setup.exe en la carpeta wordin." | Out-File $logFile -Append
-            "Buscando en: $wordinDir" | Out-File $logFile -Append
-            $filesInWordin = Get-ChildItem -Path $wordinDir -ErrorAction SilentlyContinue
-            if ($filesInWordin) {
-                "Archivos encontrados en wordin:" | Out-File $logFile -Append
-                $filesInWordin | ForEach-Object { "  - $($_.Name)" } | Out-File $logFile -Append
-            }
+            "ADVERTENCIA: No se encontro la carpeta wordin en el archivo extraido." | Out-File $logFile -Append
         }
         
-        # Limpiar archivos temporales solo si la instalación fue exitosa
-        if (-not $script:skipCleanup) {
-            "Limpiando archivos temporales extraídos..." | Out-File $logFile -Append
-            Remove-Item -Path $tempExtractPath -Recurse -Force -ErrorAction SilentlyContinue
-            "Limpieza de archivos temporales completada." | Out-File $logFile -Append
-        } else {
-            "Los archivos temporales se mantienen para instalación manual en: $tempExtractPath" | Out-File $logFile -Append
-        }
+        # Limpiar archivos temporales extraídos (ya se copiaron al escritorio)
+        "Limpiando archivos temporales extraidos..." | Out-File $logFile -Append
+        Remove-Item -Path $tempExtractPath -Recurse -Force -ErrorAction SilentlyContinue
+        "Limpieza de archivos temporales completada." | Out-File $logFile -Append
         "Instalación de plantillas y addin de Word completada." | Out-File $logFile -Append
     } else {
         "ERROR: Los archivos extraidos no se encontraron en $tempExtractPath" | Out-File $logFile -Append
